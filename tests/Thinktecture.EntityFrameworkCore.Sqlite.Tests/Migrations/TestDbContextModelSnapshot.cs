@@ -42,6 +42,39 @@ namespace Thinktecture.Migrations
                     b.ToTable("TestEntities");
                 });
 
+            modelBuilder.Entity("Thinktecture.TestDatabaseContext.TestEntityOwningInlineEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("TestEntitiesOwningInlineEntity");
+                });
+
+            modelBuilder.Entity("Thinktecture.TestDatabaseContext.TestEntityOwningManyEntities", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("TestEntitiesOwningManyEntities");
+                });
+
+            modelBuilder.Entity("Thinktecture.TestDatabaseContext.TestEntityOwningOneSeparateEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("TestEntitiesOwningOneSeparateEntity");
+                });
+
             modelBuilder.Entity("Thinktecture.TestDatabaseContext.TestEntityWithAutoIncrement", b =>
                 {
                     b.Property<int>("Id")
@@ -140,6 +173,76 @@ namespace Thinktecture.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("TestEntitiesWithDefaultValues");
+                });
+
+            modelBuilder.Entity("Thinktecture.TestDatabaseContext.TestEntityOwningInlineEntity", b =>
+                {
+                    b.OwnsOne("Thinktecture.TestDatabaseContext.OwnedInlineEntity", "InlineEntity", b1 =>
+                        {
+                            b1.Property<Guid>("TestEntityOwningInlineEntityId")
+                                .HasColumnType("TEXT");
+
+                            b1.Property<int>("IntColumn")
+                                .HasColumnType("INTEGER");
+
+                            b1.Property<string>("StringColumn")
+                                .HasColumnType("TEXT");
+
+                            b1.HasKey("TestEntityOwningInlineEntityId");
+
+                            b1.ToTable("TestEntitiesOwningInlineEntity");
+
+                            b1.WithOwner()
+                                .HasForeignKey("TestEntityOwningInlineEntityId");
+                        });
+                });
+
+            modelBuilder.Entity("Thinktecture.TestDatabaseContext.TestEntityOwningManyEntities", b =>
+                {
+                    b.OwnsMany("Thinktecture.TestDatabaseContext.OwnedSeparateEntity", "SeparateEntities", b1 =>
+                        {
+                            b1.Property<Guid>("TestEntityOwningManyEntitiesId")
+                                .HasColumnType("TEXT");
+
+                            b1.Property<int>("Id")
+                                .ValueGeneratedOnAdd()
+                                .HasColumnType("INTEGER");
+
+                            b1.Property<int>("IntColumn")
+                                .HasColumnType("INTEGER");
+
+                            b1.Property<string>("StringColumn")
+                                .HasColumnType("TEXT");
+
+                            b1.HasKey("TestEntityOwningManyEntitiesId", "Id");
+
+                            b1.ToTable("SeparateEntities_Many");
+
+                            b1.WithOwner()
+                                .HasForeignKey("TestEntityOwningManyEntitiesId");
+                        });
+                });
+
+            modelBuilder.Entity("Thinktecture.TestDatabaseContext.TestEntityOwningOneSeparateEntity", b =>
+                {
+                    b.OwnsOne("Thinktecture.TestDatabaseContext.OwnedSeparateEntity", "SeparateEntity", b1 =>
+                        {
+                            b1.Property<Guid>("TestEntityOwningOneSeparateEntityId")
+                                .HasColumnType("TEXT");
+
+                            b1.Property<int>("IntColumn")
+                                .HasColumnType("INTEGER");
+
+                            b1.Property<string>("StringColumn")
+                                .HasColumnType("TEXT");
+
+                            b1.HasKey("TestEntityOwningOneSeparateEntityId");
+
+                            b1.ToTable("SeparateEntities_One");
+
+                            b1.WithOwner()
+                                .HasForeignKey("TestEntityOwningOneSeparateEntityId");
+                        });
                 });
 #pragma warning restore 612, 618
         }

@@ -562,6 +562,92 @@ namespace Thinktecture.EntityFrameworkCore.TempTables.SqlServerTempTableCreatorT
          ValidateColumn(columns[1], nameof(TempTable<int, string>.Column2), "nvarchar", false);
       }
 
+      [Fact]
+      public async Task Should_create_temp_table_for_entity_with_inlined_owned_type()
+      {
+         await using var tempTable = await SUT.CreateTempTableAsync(ActDbContext.GetEntityType<TestEntityOwningInlineEntity>(), _optionsWithNonUniqueName);
+
+         var columns = AssertDbContext.GetTempTableColumns<TestEntityOwningInlineEntity>().ToList();
+         columns.Should().HaveCount(3);
+
+         ValidateColumn(columns[0], nameof(TestEntityOwningInlineEntity.Id), "uniqueidentifier", false);
+         ValidateColumn(columns[1], $"{nameof(TestEntityOwningInlineEntity.InlineEntity)}_{nameof(TestEntityOwningInlineEntity.InlineEntity.IntColumn)}", "int", true);
+         ValidateColumn(columns[2], $"{nameof(TestEntityOwningInlineEntity.InlineEntity)}_{nameof(TestEntityOwningInlineEntity.InlineEntity.StringColumn)}", "nvarchar", true);
+      }
+
+      [Fact]
+      public async Task Should_create_temp_table_for_entity_by_selecting_inlined_owned_type_as_whole()
+      {
+         _optionsWithNonUniqueName.MembersToInclude = EntityMembersProvider.From<TestEntityOwningInlineEntity>(e => new
+                                                                                                                    {
+                                                                                                                       e.Id,
+                                                                                                                       e.InlineEntity
+                                                                                                                    });
+         await using var tempTable = await SUT.CreateTempTableAsync(ActDbContext.GetEntityType<TestEntityOwningInlineEntity>(), _optionsWithNonUniqueName);
+
+         var columns = AssertDbContext.GetTempTableColumns<TestEntityOwningInlineEntity>().ToList();
+         columns.Should().HaveCount(3);
+
+         ValidateColumn(columns[0], nameof(TestEntityOwningInlineEntity.Id), "uniqueidentifier", false);
+         ValidateColumn(columns[1], $"{nameof(TestEntityOwningInlineEntity.InlineEntity)}_{nameof(TestEntityOwningInlineEntity.InlineEntity.IntColumn)}", "int", true);
+         ValidateColumn(columns[2], $"{nameof(TestEntityOwningInlineEntity.InlineEntity)}_{nameof(TestEntityOwningInlineEntity.InlineEntity.StringColumn)}", "nvarchar", true);
+      }
+
+      [Fact]
+      public async Task Should_create_temp_table_for_entity_with_separated_owned_type()
+      {
+         var ownerEntityType = ActDbContext.GetEntityType<TestEntityOwningOneSeparateEntity>();
+         await using var tempTable = await SUT.CreateTempTableAsync(ownerEntityType, _optionsWithNonUniqueName);
+
+         var columns = AssertDbContext.GetTempTableColumns<TestEntityOwningOneSeparateEntity>().ToList();
+         columns.Should().HaveCount(1);
+
+         ValidateColumn(columns[0], nameof(TestEntityOwningOneSeparateEntity.Id), "uniqueidentifier", false);
+
+         var ownedTypeEntityType = ownerEntityType.GetNavigations().Single().GetTargetType();
+         await using var ownedTempTable = await SUT.CreateTempTableAsync(ownedTypeEntityType, _optionsWithNonUniqueName);
+
+         columns = AssertDbContext.GetTempTableColumns(ownedTypeEntityType).ToList();
+         columns.Should().HaveCount(3);
+         ValidateColumn(columns[0], $"{nameof(TestEntityOwningOneSeparateEntity)}{nameof(TestEntityOwningOneSeparateEntity.Id)}", "uniqueidentifier", false);
+         ValidateColumn(columns[1], nameof(OwnedSeparateEntity.IntColumn), "int", false);
+         ValidateColumn(columns[2], nameof(OwnedSeparateEntity.StringColumn), "nvarchar", true);
+      }
+
+      [Fact]
+      public void Should_throw_when_selecting_separated_owned_type_as_whole()
+      {
+         _optionsWithNonUniqueName.MembersToInclude = EntityMembersProvider.From<TestEntityOwningOneSeparateEntity>(e => new
+                                                                                                                         {
+                                                                                                                            e.Id,
+                                                                                                                            e.SeparateEntity
+                                                                                                                         });
+         SUT.Awaiting(sut => sut.CreateTempTableAsync(ActDbContext.GetEntityType<TestEntityOwningOneSeparateEntity>(), _optionsWithNonUniqueName))
+            .Should().Throw<NotSupportedException>();
+      }
+
+      [Fact]
+      public async Task Should_create_temp_table_for_entity_with_many_owned_types()
+      {
+         var ownerEntityType = ActDbContext.GetEntityType<TestEntityOwningManyEntities>();
+         await using var tempTable = await SUT.CreateTempTableAsync(ownerEntityType, _optionsWithNonUniqueName);
+
+         var columns = AssertDbContext.GetTempTableColumns<TestEntityOwningManyEntities>().ToList();
+         columns.Should().HaveCount(1);
+
+         ValidateColumn(columns[0], nameof(TestEntityOwningManyEntities.Id), "uniqueidentifier", false);
+
+         var ownedTypeEntityType = ownerEntityType.GetNavigations().Single().GetTargetType();
+         await using var ownedTempTable = await SUT.CreateTempTableAsync(ownedTypeEntityType, _optionsWithNonUniqueName);
+
+         columns = AssertDbContext.GetTempTableColumns(ownedTypeEntityType).ToList();
+         columns.Should().HaveCount(4);
+         ValidateColumn(columns[0], $"{nameof(TestEntityOwningManyEntities)}{nameof(TestEntityOwningManyEntities.Id)}", "uniqueidentifier", false);
+         ValidateColumn(columns[1], "Id", "int", false);
+         ValidateColumn(columns[2], nameof(OwnedSeparateEntity.IntColumn), "int", false);
+         ValidateColumn(columns[3], nameof(OwnedSeparateEntity.StringColumn), "nvarchar", true);
+      }
+
       private void ValidateColumn(InformationSchemaColumn column, string name, string type, bool isNullable, byte? numericPrecision = null, int? numericScale = null, int? charMaxLength = null)
       {
          if (column == null)

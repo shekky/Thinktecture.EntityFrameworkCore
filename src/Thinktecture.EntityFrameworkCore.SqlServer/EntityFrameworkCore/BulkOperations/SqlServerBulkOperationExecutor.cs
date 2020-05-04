@@ -63,15 +63,31 @@ namespace Thinktecture.EntityFrameworkCore.BulkOperations
       }
 
       /// <inheritdoc />
-      public Task BulkInsertAsync<T>(
+      public async Task BulkInsertAsync<T>(
          IEnumerable<T> entities,
          IBulkInsertOptions options,
          CancellationToken cancellationToken = default)
          where T : class
       {
-         var entityType = _ctx.Model.GetEntityType(typeof(T));
+         if (entities == null)
+            throw new ArgumentNullException(nameof(entities));
+         if (options == null)
+            throw new ArgumentNullException(nameof(options));
 
-         return BulkInsertAsync(entityType, entities, entityType.GetSchema(), entityType.GetTableName(), options, cancellationToken);
+         var entityType = _ctx.Model.GetEntityType(typeof(T));
+         var bulkInsertContext = CreateBulkInsertContext(options);
+
+         await _ctx.Database.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+
+         try
+         {
+            await BulkInsertAsync(entityType, entities, entityType.GetSchema(), entityType.GetTableName(), bulkInsertContext, cancellationToken).ConfigureAwait(false);
+            await BulkInsertSeparatedOwnedEntitiesAsync(entityType, entities).ConfigureAwait(false);
+         }
+         finally
+         {
+            await _ctx.Database.CloseConnectionAsync().ConfigureAwait(false);
+         }
       }
 
       private async Task BulkInsertAsync<T>(
@@ -79,45 +95,45 @@ namespace Thinktecture.EntityFrameworkCore.BulkOperations
          IEnumerable<T> entities,
          string? schema,
          string tableName,
-         IBulkInsertOptions options,
-         CancellationToken cancellationToken = default)
+         BulkInsertContext bulkInsertContext,
+         CancellationToken cancellationToken)
          where T : class
       {
-         if (entities == null)
-            throw new ArgumentNullException(nameof(entities));
-         if (tableName == null)
-            throw new ArgumentNullException(nameof(tableName));
-         if (options == null)
-            throw new ArgumentNullException(nameof(options));
+         var properties = bulkInsertContext.Options.MembersToInsert.GetPropertiesForInsert(entityType);
 
-         if (!(options is SqlServerBulkInsertOptions sqlServerOptions))
-            sqlServerOptions = new SqlServerBulkInsertOptions(options);
-
-         var factory = _ctx.GetService<IEntityDataReaderFactory>();
-         var properties = options.MembersToInsert.GetPropertiesForInsert(entityType);
-         var sqlCon = (SqlConnection)_ctx.Database.GetDbConnection();
-         var sqlTx = (SqlTransaction?)_ctx.Database.CurrentTransaction?.GetDbTransaction();
-
-         using var reader = factory.Create(_ctx, entities, properties);
-         using var bulkCopy = CreateSqlBulkCopy(sqlCon, sqlTx, schema, tableName, sqlServerOptions);
+         using var reader = bulkInsertContext.Factory.Create(_ctx, entities, properties);
+         using var bulkCopy = CreateSqlBulkCopy(bulkInsertContext, schema, tableName);
 
          var columns = SetColumnMappings(bulkCopy, reader);
 
-         await _ctx.Database.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+         LogInserting(bulkInsertContext.Options.SqlBulkCopyOptions, bulkCopy, columns);
+         var stopwatch = Stopwatch.StartNew();
 
-         try
+         await bulkCopy.WriteToServerAsync(reader, cancellationToken).ConfigureAwait(false);
+
+         LogInserted(bulkInsertContext.Options.SqlBulkCopyOptions, stopwatch.Elapsed, bulkCopy, columns);
+      }
+
+      private async Task BulkInsertSeparatedOwnedEntitiesAsync<T>(
+         IEntityType entityType,
+         IEnumerable<T> entities)
+         where T : class
+      {
+         foreach (var navi in entityType.GetOwnedTypesProperties(false))
          {
-            LogInserting(sqlServerOptions.SqlBulkCopyOptions, bulkCopy, columns);
-            var stopwatch = Stopwatch.StartNew();
-
-            await bulkCopy.WriteToServerAsync(reader, cancellationToken).ConfigureAwait(false);
-
-            LogInserted(sqlServerOptions.SqlBulkCopyOptions, stopwatch.Elapsed, bulkCopy, columns);
+            if (navi.ForeignKey.IsOwnership && navi.ForeignKey.PrincipalEntityType == entityType)
+            {
+               var ownedEntities = GetOwnedEntities(entities, navi);
+            }
          }
-         finally
-         {
-            await _ctx.Database.CloseConnectionAsync().ConfigureAwait(false);
-         }
+      }
+
+      private static List<object> GetOwnedEntities<T>(IEnumerable<T> entities, INavigation ownedProperty)
+         where T : class
+      {
+         var getter = ownedProperty.GetGetter() ?? throw new Exception($"No property-getter for the navigational property '{ownedProperty.ClrType.Name}.{ownedProperty.PropertyInfo.Name}' found.");
+
+         return entities.Select(getter.GetClrValue).Where(e => e != null).ToList();
       }
 
       private static string SetColumnMappings(SqlBulkCopy bulkCopy, IEntityDataReader reader)
@@ -141,19 +157,22 @@ namespace Thinktecture.EntityFrameworkCore.BulkOperations
          return columnsSb.ToString();
       }
 
-      private SqlBulkCopy CreateSqlBulkCopy(SqlConnection sqlCon, SqlTransaction? sqlTx, string? schema, string tableName, SqlServerBulkInsertOptions sqlServerOptions)
+      private SqlBulkCopy CreateSqlBulkCopy(
+         BulkInsertContext bulkInsertContext,
+         string? schema,
+         string tableName)
       {
-         var bulkCopy = new SqlBulkCopy(sqlCon, sqlServerOptions.SqlBulkCopyOptions, sqlTx)
+         var bulkCopy = new SqlBulkCopy(bulkInsertContext.Connection, bulkInsertContext.Options.SqlBulkCopyOptions, bulkInsertContext.Transaction)
                         {
                            DestinationTableName = _sqlGenerationHelper.DelimitIdentifier(tableName, schema),
-                           EnableStreaming = sqlServerOptions.EnableStreaming
+                           EnableStreaming = bulkInsertContext.Options.EnableStreaming
                         };
 
-         if (sqlServerOptions.BulkCopyTimeout.HasValue)
-            bulkCopy.BulkCopyTimeout = (int)sqlServerOptions.BulkCopyTimeout.Value.TotalSeconds;
+         if (bulkInsertContext.Options.BulkCopyTimeout.HasValue)
+            bulkCopy.BulkCopyTimeout = (int)bulkInsertContext.Options.BulkCopyTimeout.Value.TotalSeconds;
 
-         if (sqlServerOptions.BatchSize.HasValue)
-            bulkCopy.BatchSize = sqlServerOptions.BatchSize.Value;
+         if (bulkInsertContext.Options.BatchSize.HasValue)
+            bulkCopy.BatchSize = bulkInsertContext.Options.BatchSize.Value;
 
          return bulkCopy;
       }
@@ -185,37 +204,135 @@ INSERT BULK {table} ({columns})", (long)duration.TotalMilliseconds,
          if (options == null)
             throw new ArgumentNullException(nameof(options));
 
-         var entityType = _ctx.Model.GetEntityType(typeof(T));
-         var tempTableCreator = _ctx.GetService<ISqlServerTempTableCreator>();
-
          if (!(options is SqlServerTempTableBulkInsertOptions sqlServerOptions))
          {
             sqlServerOptions = new SqlServerTempTableBulkInsertOptions(options);
             options = sqlServerOptions;
          }
 
-         var tempTableOptions = options.TempTableCreationOptions;
+         var entityType = _ctx.Model.GetEntityType(typeof(T));
+         var tempTableCtx = CreateTempTableContext(sqlServerOptions);
+         var bulkInsertCtx = CreateBulkInsertContext(options.BulkInsertOptions);
 
-         if (sqlServerOptions.PrimaryKeyCreation == SqlServerPrimaryKeyCreation.AfterBulkInsert && tempTableOptions.CreatePrimaryKey)
-            tempTableOptions = new TempTableCreationOptions(tempTableOptions) { CreatePrimaryKey = false };
-
-         var tempTableReference = await tempTableCreator.CreateTempTableAsync(entityType, tempTableOptions, cancellationToken).ConfigureAwait(false);
+         await _ctx.Database.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
 
          try
          {
-            await BulkInsertAsync(entityType, entities, null, tempTableReference.Name, options.BulkInsertOptions, cancellationToken).ConfigureAwait(false);
-
-            if (sqlServerOptions.PrimaryKeyCreation == SqlServerPrimaryKeyCreation.AfterBulkInsert)
-               await tempTableCreator.CreatePrimaryKeyAsync(_ctx, entityType, tempTableReference.Name, options.TempTableCreationOptions.TruncateTableIfExists, cancellationToken).ConfigureAwait(false);
-
+            var tempTableReference = await CreateTableAndBulkInsertAsync(entityType, entities, tempTableCtx, bulkInsertCtx, cancellationToken).ConfigureAwait(false);
             var query = _ctx.Set<T>().FromSqlRaw($"SELECT * FROM {_sqlGenerationHelper.DelimitIdentifier(tempTableReference.Name)}");
 
             return new TempTableQuery<T>(query, tempTableReference);
          }
+         finally
+         {
+            await _ctx.Database.CloseConnectionAsync().ConfigureAwait(false);
+         }
+      }
+
+      private async Task<ITempTableReference> CreateTableAndBulkInsertAsync(
+         IEntityType entityType,
+         IEnumerable<object> entities,
+         TempTableContext tempTableCtx,
+         BulkInsertContext bulkInsertCtx,
+         CancellationToken cancellationToken)
+      {
+         var tempTableReference = await tempTableCtx.Creator.CreateTempTableAsync(entityType, tempTableCtx.Options, cancellationToken).ConfigureAwait(false);
+         List<ITempTableReference>? ownedTypesTempTableRefs = null;
+
+         try
+         {
+            await BulkInsertAsync(entityType, entities, null, tempTableReference.Name, bulkInsertCtx, cancellationToken).ConfigureAwait(false);
+
+            if (tempTableCtx.PrimaryKeyCreation == SqlServerPrimaryKeyCreation.AfterBulkInsert)
+               await tempTableCtx.Creator.CreatePrimaryKeyAsync(_ctx, entityType, tempTableReference.Name, tempTableCtx.Options.TruncateTableIfExists, cancellationToken).ConfigureAwait(false);
+
+            foreach (var ownedProperty in entityType.GetOwnedTypesProperties(false))
+            {
+               var ownedEntityType = ownedProperty.GetTargetType();
+               var ownedEntities = GetOwnedEntities(entities, ownedProperty);
+
+               var ownedTempTableRef = await CreateTableAndBulkInsertAsync(ownedEntityType, ownedEntities, tempTableCtx, bulkInsertCtx, cancellationToken).ConfigureAwait(false);
+
+               (ownedTypesTempTableRefs ??= new List<ITempTableReference>()).Add(ownedTempTableRef);
+            }
+
+            if (ownedTypesTempTableRefs == null)
+               return tempTableReference;
+
+            return new OwnerTypeTempTableReference(tempTableReference, ownedTypesTempTableRefs);
+         }
          catch (Exception)
          {
+            if (ownedTypesTempTableRefs != null)
+            {
+               foreach (var ownedTypeTempTableRef in ownedTypesTempTableRefs)
+               {
+                  await ownedTypeTempTableRef.DisposeAsync().ConfigureAwait(false);
+               }
+            }
+
             await tempTableReference.DisposeAsync().ConfigureAwait(false);
             throw;
+         }
+      }
+
+      private TempTableContext CreateTempTableContext(SqlServerTempTableBulkInsertOptions options)
+      {
+         var tempTableCreator = _ctx.GetService<ISqlServerTempTableCreator>();
+         var tempTableOptions = ((ITempTableBulkInsertOptions)options).TempTableCreationOptions;
+
+         if (options.PrimaryKeyCreation == SqlServerPrimaryKeyCreation.AfterBulkInsert && tempTableOptions.CreatePrimaryKey)
+            tempTableOptions = new TempTableCreationOptions(tempTableOptions) { CreatePrimaryKey = false };
+
+         return new TempTableContext(tempTableCreator, tempTableOptions, options.PrimaryKeyCreation);
+      }
+
+      private BulkInsertContext CreateBulkInsertContext(IBulkInsertOptions options)
+      {
+         if (!(options is SqlServerBulkInsertOptions sqlServerOptions))
+            sqlServerOptions = new SqlServerBulkInsertOptions(options);
+
+         var factory = _ctx.GetService<IEntityDataReaderFactory>();
+         var sqlCon = (SqlConnection)_ctx.Database.GetDbConnection();
+         var sqlTx = (SqlTransaction?)_ctx.Database.CurrentTransaction?.GetDbTransaction();
+
+         return new BulkInsertContext(factory, sqlCon, sqlTx, sqlServerOptions);
+      }
+
+      private class TempTableContext
+      {
+         public ISqlServerTempTableCreator Creator { get; }
+         public ITempTableCreationOptions Options { get; }
+         public SqlServerPrimaryKeyCreation PrimaryKeyCreation { get; }
+
+         public TempTableContext(
+            ISqlServerTempTableCreator tempTableCreator,
+            ITempTableCreationOptions tempTableOptions,
+            SqlServerPrimaryKeyCreation primaryKeyCreation)
+         {
+            Creator = tempTableCreator;
+            Options = tempTableOptions;
+            PrimaryKeyCreation = primaryKeyCreation;
+         }
+      }
+
+      private class BulkInsertContext
+      {
+         public IEntityDataReaderFactory Factory { get; }
+         public SqlConnection Connection { get; }
+         public SqlTransaction? Transaction { get; }
+         public SqlServerBulkInsertOptions Options { get; }
+
+         public BulkInsertContext(
+            IEntityDataReaderFactory factory,
+            SqlConnection connection,
+            SqlTransaction? transaction,
+            SqlServerBulkInsertOptions options)
+         {
+            Factory = factory;
+            Connection = connection;
+            Transaction = transaction;
+            Options = options;
          }
       }
    }

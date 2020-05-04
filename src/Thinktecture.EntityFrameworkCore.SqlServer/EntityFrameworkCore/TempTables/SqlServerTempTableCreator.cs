@@ -165,7 +165,7 @@ END
             sb.Append("\t\t")
               .Append(_sqlGenerationHelper.DelimitIdentifier(property.GetColumnName())).Append(" ")
               .Append(property.GetColumnType())
-              .Append(property.IsNullable ? " NULL" : " NOT NULL");
+              .Append(property.IsColumnNullable() ? " NULL" : " NOT NULL");
 
             if (IsIdentityColumn(property))
                sb.Append(" IDENTITY");

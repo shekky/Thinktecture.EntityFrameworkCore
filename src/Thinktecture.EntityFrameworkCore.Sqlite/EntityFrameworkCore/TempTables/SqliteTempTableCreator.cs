@@ -105,10 +105,10 @@ DROP TABLE IF EXISTS {_sqlGenerationHelper.DelimitIdentifier(tableName, "temp")}
             sb.Append("\t\t")
               .Append(_sqlGenerationHelper.DelimitIdentifier(property.GetColumnName())).Append(" ")
               .Append(property.GetColumnType())
-              .Append(property.IsNullable ? " NULL" : " NOT NULL");
+              .Append(property.IsColumnNullable() ? " NULL" : " NOT NULL");
 
-            if (property.IsAutoIncrement())
-               sb.Append("AUTOINCREMENT");
+            if (property.IsAutoIncrement() && property.IsKey() && entityType.FindPrimaryKey()?.Properties.Count == 1)
+               sb.Append(" AUTOINCREMENT");
 
             var defaultValueSql = property.GetDefaultValueSql();
 

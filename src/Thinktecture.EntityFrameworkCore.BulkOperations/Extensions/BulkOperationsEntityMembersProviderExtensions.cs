@@ -20,16 +20,40 @@ namespace Thinktecture
       /// <param name="entityMembersProvider">Entity member provider.</param>
       /// <param name="entityType">Entity type.</param>
       /// <returns>Properties to include into a temp table.</returns>
-      public static IReadOnlyList<IProperty> GetPropertiesForTempTable(this IEntityMembersProvider? entityMembersProvider,
-                                                                       IEntityType entityType)
+      public static IReadOnlyList<IProperty> GetPropertiesForTempTable(
+         this IEntityMembersProvider? entityMembersProvider,
+         IEntityType entityType)
       {
          if (entityType == null)
             throw new ArgumentNullException(nameof(entityType));
 
          if (entityMembersProvider == null)
-            return entityType.GetProperties().ToList();
+         {
+            var properties = entityType.GetProperties().ToList();
+            AddInlineOwnedTypes(properties, entityType);
+
+            return properties;
+         }
 
          return ConvertToEntityProperties(entityMembersProvider.GetMembers(), entityType);
+      }
+
+      private static void AddInlineOwnedTypes(
+         List<IProperty> properties,
+         IEntityType entityType)
+      {
+         foreach (var ownedNavi in entityType.GetOwnedTypesProperties(true))
+         {
+            AddOwnedTypeProperties(properties, ownedNavi);
+         }
+      }
+
+      private static void AddOwnedTypeProperties(List<IProperty> properties, INavigation ownedNavi)
+      {
+         var ownedType = ownedNavi.GetTargetType();
+         var ownedProps = ownedType.GetProperties();
+
+         properties.AddRange(ownedProps.Where(p => !p.IsKey()));
       }
 
       /// <summary>
@@ -38,8 +62,9 @@ namespace Thinktecture
       /// <param name="entityMembersProvider">Entity member provider.</param>
       /// <param name="entityType">Entity type.</param>
       /// <returns>Properties to use insert into a (temp) table.</returns>
-      public static IReadOnlyList<IProperty> GetPropertiesForInsert(this IEntityMembersProvider? entityMembersProvider,
-                                                                    IEntityType entityType)
+      public static IReadOnlyList<IProperty> GetPropertiesForInsert(
+         this IEntityMembersProvider? entityMembersProvider,
+         IEntityType entityType)
       {
          if (entityType == null)
             throw new ArgumentNullException(nameof(entityType));
@@ -52,14 +77,26 @@ namespace Thinktecture
 
       private static IReadOnlyList<IProperty> ConvertToEntityProperties(IReadOnlyList<MemberInfo> memberInfos, IEntityType entityType)
       {
-         var properties = new IProperty[memberInfos.Count];
+         var properties = new List<IProperty>();
 
          for (var i = 0; i < memberInfos.Count; i++)
          {
             var memberInfo = memberInfos[i];
             var property = FindProperty(entityType, memberInfo);
 
-            properties[i] = property ?? throw new ArgumentException($"The member '{memberInfo.Name}' has not found on entity '{entityType.Name}'.", nameof(memberInfos));
+            if (property != null)
+            {
+               properties.Add(property);
+            }
+            else
+            {
+               var ownedNavi = FindOwnedProperty(entityType, memberInfo);
+
+               if (ownedNavi == null)
+                  throw new ArgumentException($"The member '{memberInfo.Name}' has not been found on entity '{entityType.Name}'.", nameof(memberInfos));
+
+               AddOwnedTypeProperties(properties, ownedNavi);
+            }
          }
 
          return properties;
@@ -71,6 +108,22 @@ namespace Thinktecture
          {
             if (property.PropertyInfo == memberInfo || property.FieldInfo == memberInfo)
                return property;
+         }
+
+         return null;
+      }
+
+      private static INavigation? FindOwnedProperty(IEntityType entityType, MemberInfo memberInfo)
+      {
+         foreach (var ownedTypeNavi in entityType.GetOwnedTypesProperties())
+         {
+            if (ownedTypeNavi.PropertyInfo == memberInfo || ownedTypeNavi.FieldInfo == memberInfo)
+            {
+               if (entityType.IsOwnedTypeInline(ownedTypeNavi))
+                  return ownedTypeNavi;
+
+               throw new NotSupportedException("Properties of owned types that are saved in a separate table are not supported.");
+            }
          }
 
          return null;
