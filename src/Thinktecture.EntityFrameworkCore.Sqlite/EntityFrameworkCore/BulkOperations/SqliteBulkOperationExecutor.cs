@@ -151,16 +151,13 @@ namespace Thinktecture.EntityFrameworkCore.BulkOperations
 
       private static ParameterInfo[] CreateParameters(IEntityDataReader reader, SqliteCommand command)
       {
-         var parameters = new ParameterInfo[reader.Properties.Count];
+         var parameters = new ParameterInfo[reader.FieldCount];
 
-         for (var i = 0; i < reader.Properties.Count; i++)
+         foreach (var (index, property) in reader.GetProperties())
          {
-            var property = reader.Properties[i];
-            var index = reader.GetPropertyIndex(property);
-
             var parameter = command.CreateParameter();
             parameter.ParameterName = $"$p{index}";
-            parameters[i] = new ParameterInfo(parameter, property.IsAutoIncrement());
+            parameters[index] = new ParameterInfo(parameter, property.IsAutoIncrement());
             command.Parameters.Add(parameter);
          }
 
@@ -173,24 +170,19 @@ namespace Thinktecture.EntityFrameworkCore.BulkOperations
          var sb = new StringBuilder();
          sb.Append("INSERT INTO ").Append(tableIdentifier).Append("(");
 
-         for (var i = 0; i < reader.Properties.Count; i++)
+         foreach (var (index, property) in reader.GetProperties())
          {
-            var column = reader.Properties[i];
-
-            if (i > 0)
+            if (index > 0)
                sb.Append(", ");
 
-            sb.Append(_sqlGenerationHelper.DelimitIdentifier(column.GetColumnName()));
+            sb.Append(_sqlGenerationHelper.DelimitIdentifier(property.GetColumnName()));
          }
 
          sb.Append(") VALUES (");
 
-         for (var i = 0; i < reader.Properties.Count; i++)
+         foreach (var (index, _) in reader.GetProperties())
          {
-            var property = reader.Properties[i];
-            var index = reader.GetPropertyIndex(property);
-
-            if (i > 0)
+            if (index > 0)
                sb.Append(", ");
 
             sb.Append("$p").Append(index);

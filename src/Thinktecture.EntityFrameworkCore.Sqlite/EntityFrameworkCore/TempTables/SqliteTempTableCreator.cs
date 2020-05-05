@@ -93,7 +93,9 @@ DROP TABLE IF EXISTS {_sqlGenerationHelper.DelimitIdentifier(tableName, "temp")}
 
       private string GetColumnsDefinitions(IEntityType entityType, ITempTableCreationOptions options)
       {
-         var properties = options.MembersToInclude.GetPropertiesForTempTable(entityType);
+         var properties = options.MembersToInclude
+                                 .GetPropertiesForTempTable(entityType)
+                                 .FlattenProperties(true);
          var sb = new StringBuilder();
          var isFirst = true;
 

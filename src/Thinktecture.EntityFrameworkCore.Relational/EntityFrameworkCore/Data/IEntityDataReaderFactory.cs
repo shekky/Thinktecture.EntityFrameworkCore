@@ -24,7 +24,7 @@ namespace Thinktecture.EntityFrameworkCore.Data
       IEntityDataReader Create<T>(
          DbContext ctx,
          IEnumerable<T> entities,
-         IReadOnlyList<IProperty> properties)
+         IHierarchicalPropertyIterator properties)
          where T : class;
    }
 }

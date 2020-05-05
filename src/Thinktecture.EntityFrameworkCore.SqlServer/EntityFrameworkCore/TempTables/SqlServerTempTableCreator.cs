@@ -153,7 +153,9 @@ END
          if (entityType == null)
             throw new ArgumentNullException(nameof(entityType));
 
-         var properties = options.MembersToInclude.GetPropertiesForTempTable(entityType);
+         var properties = options.MembersToInclude
+                                 .GetPropertiesForTempTable(entityType)
+                                 .FlattenProperties(true);
          var sb = new StringBuilder();
          var isFirst = true;
 

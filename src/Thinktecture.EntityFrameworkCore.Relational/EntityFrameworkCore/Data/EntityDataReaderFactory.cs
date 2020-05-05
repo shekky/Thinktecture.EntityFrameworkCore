@@ -20,7 +20,7 @@ namespace Thinktecture.EntityFrameworkCore.Data
       public IEntityDataReader Create<T>(
          DbContext ctx,
          IEnumerable<T> entities,
-         IReadOnlyList<IProperty> properties)
+         IHierarchicalPropertyIterator properties)
          where T : class
       {
          if (ctx == null)

@@ -82,7 +82,7 @@ namespace Thinktecture.EntityFrameworkCore.BulkOperations
          try
          {
             await BulkInsertAsync(entityType, entities, entityType.GetSchema(), entityType.GetTableName(), bulkInsertContext, cancellationToken).ConfigureAwait(false);
-            await BulkInsertSeparatedOwnedEntitiesAsync(entityType, entities).ConfigureAwait(false);
+            await BulkInsertSeparatedOwnedEntitiesAsync(entityType, entities, bulkInsertContext, cancellationToken).ConfigureAwait(false);
          }
          finally
          {
@@ -114,16 +114,21 @@ namespace Thinktecture.EntityFrameworkCore.BulkOperations
          LogInserted(bulkInsertContext.Options.SqlBulkCopyOptions, stopwatch.Elapsed, bulkCopy, columns);
       }
 
-      private async Task BulkInsertSeparatedOwnedEntitiesAsync<T>(
+      private async Task BulkInsertSeparatedOwnedEntitiesAsync(
          IEntityType entityType,
-         IEnumerable<T> entities)
-         where T : class
+         IEnumerable<object> entities,
+         BulkInsertContext bulkInsertContext,
+         CancellationToken cancellationToken)
       {
          foreach (var navi in entityType.GetOwnedTypesProperties(false))
          {
             if (navi.ForeignKey.IsOwnership && navi.ForeignKey.PrincipalEntityType == entityType)
             {
+               var ownedType = navi.GetTargetType();
                var ownedEntities = GetOwnedEntities(entities, navi);
+
+               await BulkInsertAsync(ownedType, ownedEntities, ownedType.GetSchema(), ownedType.GetTableName(), bulkInsertContext, cancellationToken).ConfigureAwait(false);
+               await BulkInsertSeparatedOwnedEntitiesAsync(ownedType, ownedEntities, bulkInsertContext, cancellationToken).ConfigureAwait(false);
             }
          }
       }
@@ -133,17 +138,20 @@ namespace Thinktecture.EntityFrameworkCore.BulkOperations
       {
          var getter = ownedProperty.GetGetter() ?? throw new Exception($"No property-getter for the navigational property '{ownedProperty.ClrType.Name}.{ownedProperty.PropertyInfo.Name}' found.");
 
-         return entities.Select(getter.GetClrValue).Where(e => e != null).ToList();
+         var ownedEntities = entities.Select(getter.GetClrValue);
+
+         if (ownedProperty.IsCollection())
+            ownedEntities = ownedEntities.SelectMany(c => (IEnumerable<object>)c);
+
+         return ownedEntities.Where(e => e != null).ToList();
       }
 
       private static string SetColumnMappings(SqlBulkCopy bulkCopy, IEntityDataReader reader)
       {
          var columnsSb = new StringBuilder();
 
-         for (var i = 0; i < reader.Properties.Count; i++)
+         foreach (var (index, property) in reader.GetProperties())
          {
-            var property = reader.Properties[i];
-            var index = reader.GetPropertyIndex(property);
             var columnName = property.GetColumnName();
 
             bulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping(index, columnName));

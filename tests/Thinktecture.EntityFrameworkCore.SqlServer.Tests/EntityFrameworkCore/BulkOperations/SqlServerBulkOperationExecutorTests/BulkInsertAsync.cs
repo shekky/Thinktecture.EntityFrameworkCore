@@ -281,5 +281,202 @@ namespace Thinktecture.EntityFrameworkCore.BulkOperations.SqlServerBulkOperation
                                               });
          loadedEntity.GetPrivateField().Should().Be(3);
       }
+
+      [Fact]
+      public async Task Should_ignore_inlined_owned_type_if_it_is_null()
+      {
+         var testEntity = new TestEntityOwningInlineEntity
+                          {
+                             Id = new Guid("3A1B2FFF-8E11-44E5-80E5-8C7FEEDACEB3"),
+                             InlineEntity = null!
+                          };
+         var testEntities = new[] { testEntity };
+
+         await SUT.BulkInsertAsync(testEntities, new SqlServerBulkInsertOptions());
+
+         var loadedEntities = await AssertDbContext.TestEntitiesOwningInlineEntity.ToListAsync();
+         loadedEntities.Should().HaveCount(1);
+         var loadedEntity = loadedEntities[0];
+         loadedEntity.Should().BeEquivalentTo(new TestEntityOwningInlineEntity
+                                              {
+                                                 Id = new Guid("3A1B2FFF-8E11-44E5-80E5-8C7FEEDACEB3"),
+                                                 InlineEntity = null!
+                                              });
+      }
+
+      [Fact]
+      public async Task Should_insert_inlined_owned_type_if_it_has_default_values_only()
+      {
+         var testEntity = new TestEntityOwningInlineEntity
+                          {
+                             Id = new Guid("3A1B2FFF-8E11-44E5-80E5-8C7FEEDACEB3"),
+                             InlineEntity = new OwnedInlineEntity()
+                          };
+         var testEntities = new[] { testEntity };
+
+         await SUT.BulkInsertAsync(testEntities, new SqlServerBulkInsertOptions());
+
+         var loadedEntities = await AssertDbContext.TestEntitiesOwningInlineEntity.ToListAsync();
+         loadedEntities.Should().HaveCount(1);
+         var loadedEntity = loadedEntities[0];
+         loadedEntity.Should().BeEquivalentTo(new TestEntityOwningInlineEntity
+                                              {
+                                                 Id = new Guid("3A1B2FFF-8E11-44E5-80E5-8C7FEEDACEB3"),
+                                                 InlineEntity = new OwnedInlineEntity
+                                                                {
+                                                                   IntColumn = 0,
+                                                                   StringColumn = null
+                                                                }
+                                              });
+      }
+
+      [Fact]
+      public async Task Should_insert_inlined_owned_types()
+      {
+         var testEntity = new TestEntityOwningInlineEntity
+                          {
+                             Id = new Guid("3A1B2FFF-8E11-44E5-80E5-8C7FEEDACEB3"),
+                             InlineEntity = new OwnedInlineEntity
+                                            {
+                                               IntColumn = 42,
+                                               StringColumn = "value"
+                                            }
+                          };
+         var testEntities = new[] { testEntity };
+
+         await SUT.BulkInsertAsync(testEntities, new SqlServerBulkInsertOptions());
+
+         var loadedEntities = await AssertDbContext.TestEntitiesOwningInlineEntity.ToListAsync();
+         loadedEntities.Should().HaveCount(1);
+         var loadedEntity = loadedEntities[0];
+         loadedEntity.Should().BeEquivalentTo(new TestEntityOwningInlineEntity
+                                              {
+                                                 Id = new Guid("3A1B2FFF-8E11-44E5-80E5-8C7FEEDACEB3"),
+                                                 InlineEntity = new OwnedInlineEntity
+                                                                {
+                                                                   IntColumn = 42,
+                                                                   StringColumn = "value"
+                                                                }
+                                              });
+      }
+
+      [Fact]
+      public void Should_throw_if_separated_owned_type_uses_shadow_property_id_and_is_detached()
+      {
+         var testEntity = new TestEntityOwningOneSeparateEntity
+                          {
+                             Id = new Guid("7C00ABFE-875B-4396-BE51-3E898647A264"),
+                             SeparateEntity = new OwnedSeparateEntity
+                                              {
+                                                 IntColumn = 42,
+                                                 StringColumn = "value"
+                                              }
+                          };
+         var testEntities = new[] { testEntity };
+
+         SUT.Awaiting(sut => sut.BulkInsertAsync(testEntities, new SqlServerBulkInsertOptions()))
+            .Should().Throw<InvalidOperationException>();
+      }
+
+      [Fact]
+      public async Task Should_insert_separated_owned_type_that_uses_shadow_property_id_and_is_attached()
+      {
+         var testEntity = new TestEntityOwningOneSeparateEntity
+                          {
+                             Id = new Guid("7C00ABFE-875B-4396-BE51-3E898647A264"),
+                             SeparateEntity = new OwnedSeparateEntity
+                                              {
+                                                 IntColumn = 42,
+                                                 StringColumn = "value"
+                                              }
+                          };
+         ActDbContext.Add(testEntity);
+
+         var testEntities = new[] { testEntity };
+
+         await SUT.BulkInsertAsync(testEntities, new SqlServerBulkInsertOptions());
+
+         var loadedEntities = await AssertDbContext.TestEntitiesOwningOneSeparateEntity.ToListAsync();
+         loadedEntities.Should().HaveCount(1);
+         var loadedEntity = loadedEntities[0];
+         loadedEntity.Should().BeEquivalentTo(new TestEntityOwningOneSeparateEntity
+                                              {
+                                                 Id = new Guid("7C00ABFE-875B-4396-BE51-3E898647A264"),
+                                                 SeparateEntity = new OwnedSeparateEntity
+                                                                  {
+                                                                     IntColumn = 42,
+                                                                     StringColumn = "value"
+                                                                  }
+                                              });
+      }
+
+      [Fact]
+      public void Should_throw_if_separated_owned_types_uses_shadow_property_id_and_is_detached()
+      {
+         var testEntity = new TestEntityOwningManyEntities
+                          {
+                             Id = new Guid("54FF93FC-6BE9-4F19-A52E-E517CA9FEAA7"),
+                             SeparateEntities = new List<OwnedSeparateEntity>
+                                                {
+                                                   new OwnedSeparateEntity
+                                                   {
+                                                      IntColumn = 42,
+                                                      StringColumn = "value 1"
+                                                   }
+                                                }
+                          };
+         var testEntities = new[] { testEntity };
+
+         SUT.Awaiting(sut => sut.BulkInsertAsync(testEntities, new SqlServerBulkInsertOptions()))
+            .Should().Throw<InvalidOperationException>();
+      }
+
+      [Fact]
+      public async Task Should_insert_separated_owned_types_that_uses_shadow_property_id_and_is_attached()
+      {
+         var testEntity = new TestEntityOwningManyEntities
+                          {
+                             Id = new Guid("54FF93FC-6BE9-4F19-A52E-E517CA9FEAA7"),
+                             SeparateEntities = new List<OwnedSeparateEntity>
+                                                {
+                                                   new OwnedSeparateEntity
+                                                   {
+                                                      IntColumn = 42,
+                                                      StringColumn = "value 1"
+                                                   },
+                                                   new OwnedSeparateEntity
+                                                   {
+                                                      IntColumn = 43,
+                                                      StringColumn = "value 2"
+                                                   }
+                                                }
+                          };
+         ActDbContext.Add(testEntity);
+
+         var testEntities = new[] { testEntity };
+
+         await SUT.BulkInsertAsync(testEntities, new SqlServerBulkInsertOptions());
+
+         var loadedEntities = await AssertDbContext.TestEntitiesOwningManyEntities.ToListAsync();
+         loadedEntities.Should().HaveCount(1);
+         var loadedEntity = loadedEntities[0];
+         loadedEntity.Should().BeEquivalentTo(new TestEntityOwningManyEntities
+                                              {
+                                                 Id = new Guid("54FF93FC-6BE9-4F19-A52E-E517CA9FEAA7"),
+                                                 SeparateEntities = new List<OwnedSeparateEntity>
+                                                                    {
+                                                                       new OwnedSeparateEntity
+                                                                       {
+                                                                          IntColumn = 42,
+                                                                          StringColumn = "value 1"
+                                                                       },
+                                                                       new OwnedSeparateEntity
+                                                                       {
+                                                                          IntColumn = 43,
+                                                                          StringColumn = "value 2"
+                                                                       }
+                                                                    }
+                                              });
+      }
    }
 }

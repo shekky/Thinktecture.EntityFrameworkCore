@@ -1,10 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Thinktecture.EntityFrameworkCore;
 using Thinktecture.EntityFrameworkCore.BulkOperations;
+using Thinktecture.EntityFrameworkCore.Data;
 
 // ReSharper disable once CheckNamespace
 namespace Thinktecture
@@ -20,40 +21,14 @@ namespace Thinktecture
       /// <param name="entityMembersProvider">Entity member provider.</param>
       /// <param name="entityType">Entity type.</param>
       /// <returns>Properties to include into a temp table.</returns>
-      public static IReadOnlyList<IProperty> GetPropertiesForTempTable(
+      public static IHierarchicalPropertyIterator GetPropertiesForTempTable(
          this IEntityMembersProvider? entityMembersProvider,
          IEntityType entityType)
       {
-         if (entityType == null)
-            throw new ArgumentNullException(nameof(entityType));
-
          if (entityMembersProvider == null)
-         {
-            var properties = entityType.GetProperties().ToList();
-            AddInlineOwnedTypes(properties, entityType);
+            return new EntityTypeBasedHierarchicalPropertyIterator(entityType, null, PropertiesForTempTableFilter);
 
-            return properties;
-         }
-
-         return ConvertToEntityProperties(entityMembersProvider.GetMembers(), entityType);
-      }
-
-      private static void AddInlineOwnedTypes(
-         List<IProperty> properties,
-         IEntityType entityType)
-      {
-         foreach (var ownedNavi in entityType.GetOwnedTypesProperties(true))
-         {
-            AddOwnedTypeProperties(properties, ownedNavi);
-         }
-      }
-
-      private static void AddOwnedTypeProperties(List<IProperty> properties, INavigation ownedNavi)
-      {
-         var ownedType = ownedNavi.GetTargetType();
-         var ownedProps = ownedType.GetProperties();
-
-         properties.AddRange(ownedProps.Where(p => !p.IsKey()));
+         return new HierarchicalPropertyIterator(entityType, null, entityMembersProvider.GetMembers(), PropertiesForTempTableFilter);
       }
 
       /// <summary>
@@ -62,71 +37,29 @@ namespace Thinktecture
       /// <param name="entityMembersProvider">Entity member provider.</param>
       /// <param name="entityType">Entity type.</param>
       /// <returns>Properties to use insert into a (temp) table.</returns>
-      public static IReadOnlyList<IProperty> GetPropertiesForInsert(
+      public static IHierarchicalPropertyIterator GetPropertiesForInsert(
          this IEntityMembersProvider? entityMembersProvider,
          IEntityType entityType)
       {
-         if (entityType == null)
-            throw new ArgumentNullException(nameof(entityType));
-
          if (entityMembersProvider == null)
-            return entityType.GetProperties().Where(p => p.GetBeforeSaveBehavior() != PropertySaveBehavior.Ignore).ToList();
+            return new EntityTypeBasedHierarchicalPropertyIterator(entityType, null, PropertiesForInsertFilter);
 
-         return ConvertToEntityProperties(entityMembersProvider.GetMembers(), entityType);
+         return new HierarchicalPropertyIterator(entityType, null, entityMembersProvider.GetMembers(), PropertiesForInsertFilter);
       }
 
-      private static IReadOnlyList<IProperty> ConvertToEntityProperties(IReadOnlyList<MemberInfo> memberInfos, IEntityType entityType)
+      private static bool PropertiesForTempTableFilter(
+         IProperty property,
+         INavigation? navigation)
       {
-         var properties = new List<IProperty>();
-
-         for (var i = 0; i < memberInfos.Count; i++)
-         {
-            var memberInfo = memberInfos[i];
-            var property = FindProperty(entityType, memberInfo);
-
-            if (property != null)
-            {
-               properties.Add(property);
-            }
-            else
-            {
-               var ownedNavi = FindOwnedProperty(entityType, memberInfo);
-
-               if (ownedNavi == null)
-                  throw new ArgumentException($"The member '{memberInfo.Name}' has not been found on entity '{entityType.Name}'.", nameof(memberInfos));
-
-               AddOwnedTypeProperties(properties, ownedNavi);
-            }
-         }
-
-         return properties;
+         return navigation == null || !property.IsKey();
       }
 
-      private static IProperty? FindProperty(IEntityType entityType, MemberInfo memberInfo)
+      private static bool PropertiesForInsertFilter(
+         IProperty property,
+         INavigation? navigation)
       {
-         foreach (var property in entityType.GetProperties())
-         {
-            if (property.PropertyInfo == memberInfo || property.FieldInfo == memberInfo)
-               return property;
-         }
-
-         return null;
-      }
-
-      private static INavigation? FindOwnedProperty(IEntityType entityType, MemberInfo memberInfo)
-      {
-         foreach (var ownedTypeNavi in entityType.GetOwnedTypesProperties())
-         {
-            if (ownedTypeNavi.PropertyInfo == memberInfo || ownedTypeNavi.FieldInfo == memberInfo)
-            {
-               if (entityType.IsOwnedTypeInline(ownedTypeNavi))
-                  return ownedTypeNavi;
-
-               throw new NotSupportedException("Properties of owned types that are saved in a separate table are not supported.");
-            }
-         }
-
-         return null;
+         return property.GetBeforeSaveBehavior() != PropertySaveBehavior.Ignore &&
+                (navigation == null || !property.IsKey());
       }
    }
 }
