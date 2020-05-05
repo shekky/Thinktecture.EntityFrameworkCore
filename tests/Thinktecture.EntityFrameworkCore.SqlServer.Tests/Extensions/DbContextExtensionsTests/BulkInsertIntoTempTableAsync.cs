@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Query.SqlExpressions;
 using Thinktecture.TestDatabaseContext;
 using Xunit;
 using Xunit.Abstractions;
@@ -73,17 +75,51 @@ namespace Thinktecture.Extensions.DbContextExtensionsTests
       }
 
       [Fact]
-      public async Task Should_bulk_insert_inline_owned_types_as_well()
+      public async Task Should_ignore_inlined_owned_type_if_it_is_null()
       {
-         // ActDbContext.Add(new TestEntityOwningOptionalInlineEntity { Id = new Guid("D3749B6F-FF2F-427C-8F83-796D02D2C719") });
-         // ActDbContext.SaveChanges();
-         // var e = AssertDbContext.TestEntitiesOwningOptionalInlineEntity.ToList();
-         // return;
-         await using var tempTableQuery = await ActDbContext.BulkInsertIntoTempTableAsync(Array.Empty<TestEntityOwningInlineEntity>());
-         // await using var tempTableQuery = await ActDbContext.BulkInsertIntoTempTableAsync(Array.Empty<TestEntityOwningOneSeparateEntity>());
-         // await using var tempTableQuery = await ActDbContext.BulkInsertIntoTempTableAsync(Array.Empty<TestEntityOwningManyEntities>());
+         var testEntity = new TestEntityOwningInlineEntity
+                          {
+                             Id = new Guid("3A1B2FFF-8E11-44E5-80E5-8C7FEEDACEB3"),
+                             InlineEntity = null!
+                          };
+         var testEntities = new[] { testEntity };
 
-         var tempTable = await tempTableQuery.Query.ToListAsync();
+         await using var tempTableQuery = await ActDbContext.BulkInsertIntoTempTableAsync(testEntities);
+
+         var loadedEntities = await tempTableQuery.Query.ToListAsync();
+         loadedEntities.Should().HaveCount(1);
+         var loadedEntity = loadedEntities[0];
+         loadedEntity.Should().BeEquivalentTo(new TestEntityOwningInlineEntity
+                                              {
+                                                 Id = new Guid("3A1B2FFF-8E11-44E5-80E5-8C7FEEDACEB3"),
+                                                 InlineEntity = null!
+                                              });
+      }
+
+      [Fact]
+      public async Task Should_insert_inlined_owned_type_if_it_has_default_values_only()
+      {
+         var testEntity = new TestEntityOwningInlineEntity
+                          {
+                             Id = new Guid("3A1B2FFF-8E11-44E5-80E5-8C7FEEDACEB3"),
+                             InlineEntity = new OwnedInlineEntity()
+                          };
+         var testEntities = new[] { testEntity };
+
+         await using var tempTableQuery = await ActDbContext.BulkInsertIntoTempTableAsync(testEntities);
+
+         var loadedEntities = await tempTableQuery.Query.ToListAsync();
+         loadedEntities.Should().HaveCount(1);
+         var loadedEntity = loadedEntities[0];
+         loadedEntity.Should().BeEquivalentTo(new TestEntityOwningInlineEntity
+                                              {
+                                                 Id = new Guid("3A1B2FFF-8E11-44E5-80E5-8C7FEEDACEB3"),
+                                                 InlineEntity = new OwnedInlineEntity
+                                                                {
+                                                                   IntColumn = 0,
+                                                                   StringColumn = null
+                                                                }
+                                              });
       }
    }
 }
