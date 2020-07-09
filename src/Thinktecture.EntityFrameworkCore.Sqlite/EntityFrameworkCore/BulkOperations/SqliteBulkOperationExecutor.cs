@@ -226,6 +226,13 @@ namespace Thinktecture.EntityFrameworkCore.BulkOperations
             options = sqliteOptions;
          }
 
+         var hasOwnedProperties = options.TempTableCreationOptions.MembersToInclude
+                                         .GetPropertiesForTempTable(entityType)
+                                         .GetOwnedTypes().Any();
+
+         if (hasOwnedProperties)
+            throw new NotSupportedException("Creation of a temp table for entities containing owned types is not supported.");
+
          var tempTableReference = await tempTableCreator.CreateTempTableAsync(entityType, options.TempTableCreationOptions, cancellationToken).ConfigureAwait(false);
 
          try

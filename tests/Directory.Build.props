@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <ParentPropsFile>$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))</ParentPropsFile>
+    <IsPackable>false</IsPackable>
     <NoWarn>$(NoWarn);CA1062</NoWarn>
   </PropertyGroup>
 

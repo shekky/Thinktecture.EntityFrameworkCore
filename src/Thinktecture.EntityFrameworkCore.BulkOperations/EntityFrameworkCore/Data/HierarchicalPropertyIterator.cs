@@ -3,17 +3,16 @@ using System.Collections.Generic;
 using System.Reflection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
-using Thinktecture.EntityFrameworkCore.Data;
 
-namespace Thinktecture.EntityFrameworkCore
+namespace Thinktecture.EntityFrameworkCore.Data
 {
    internal class HierarchicalPropertyIterator : IHierarchicalPropertyIterator
    {
       private readonly IReadOnlyList<MemberInfo> _members;
       private readonly Func<IProperty, INavigation?, bool> _filter;
 
-      private IEnumerable<IProperty> _properties;
-      private IEnumerable<IHierarchicalPropertyIterator> _ownedProperties;
+      private IEnumerable<IProperty>? _properties;
+      private IEnumerable<IHierarchicalPropertyIterator>? _ownedProperties;
 
       public IEntityType EntityType { get; }
       public INavigation? Navigation { get; }

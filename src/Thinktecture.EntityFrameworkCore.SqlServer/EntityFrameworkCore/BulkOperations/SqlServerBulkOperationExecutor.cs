@@ -222,6 +222,13 @@ INSERT BULK {table} ({columns})", (long)duration.TotalMilliseconds,
          var tempTableCtx = CreateTempTableContext(sqlServerOptions);
          var bulkInsertCtx = CreateBulkInsertContext(options.BulkInsertOptions);
 
+         var hasOwnedProperties = tempTableCtx.Options.MembersToInclude
+                                              .GetPropertiesForTempTable(entityType)
+                                              .GetOwnedTypes().Any();
+
+         if (hasOwnedProperties)
+            throw new NotSupportedException("Creation of a temp table for entities containing owned types is not supported.");
+
          await _ctx.Database.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
 
          try

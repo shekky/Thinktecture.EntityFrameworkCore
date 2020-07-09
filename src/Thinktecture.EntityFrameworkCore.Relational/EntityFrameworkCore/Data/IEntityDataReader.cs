@@ -9,6 +9,10 @@ namespace Thinktecture.EntityFrameworkCore.Data
    /// </summary>
    public interface IEntityDataReader : IDataReader
    {
+      /// <summary>
+      /// Gets the properties that are read by the reader including their index.
+      /// </summary>
+      /// <returns>A collection of properties.</returns>
       IEnumerable<(int index, IProperty property)> GetProperties();
    }
 }

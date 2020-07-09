@@ -7,7 +7,7 @@ namespace Thinktecture.EntityFrameworkCore.TempTables
    /// <summary>
    /// Temp table reference for owned entities.
    /// </summary>
-   public class OwnerTypeTempTableReference : ITempTableReference
+   public sealed class OwnerTypeTempTableReference : ITempTableReference
    {
       private readonly ITempTableReference _ownerTempTableReference;
       private readonly IReadOnlyList<ITempTableReference> _ownedTempTableRefs;

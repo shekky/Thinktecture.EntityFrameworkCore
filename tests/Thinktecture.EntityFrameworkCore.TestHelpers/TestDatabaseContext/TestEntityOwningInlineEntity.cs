@@ -8,5 +8,11 @@ namespace Thinktecture.TestDatabaseContext
       public Guid Id { get; set; }
 
       public OwnedInlineEntity InlineEntity { get; set; }
+
+#nullable disable
+      public TestEntityOwningInlineEntity()
+      {
+      }
+#nullable enable
    }
 }

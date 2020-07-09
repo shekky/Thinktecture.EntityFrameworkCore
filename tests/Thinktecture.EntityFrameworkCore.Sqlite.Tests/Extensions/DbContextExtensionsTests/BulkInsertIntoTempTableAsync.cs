@@ -1,12 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Linq.Expressions;
 using System.Threading.Tasks;
 using FluentAssertions;
-using Microsoft.Data.SqlClient;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Query.SqlExpressions;
 using Thinktecture.TestDatabaseContext;
 using Xunit;
 using Xunit.Abstractions;
@@ -14,11 +12,10 @@ using Xunit.Abstractions;
 namespace Thinktecture.Extensions.DbContextExtensionsTests
 {
    // ReSharper disable once InconsistentNaming
-   [Collection("BulkInsertTempTableAsync")]
    public class BulkInsertIntoTempTableAsync : IntegrationTestsBase
    {
       public BulkInsertIntoTempTableAsync(ITestOutputHelper testOutputHelper)
-         : base(testOutputHelper, true)
+         : base(testOutputHelper)
       {
       }
 
@@ -71,7 +68,7 @@ namespace Thinktecture.Extensions.DbContextExtensionsTests
          tempTableQuery.Dispose();
 
          tempTableQuery.Awaiting(t => t.Query.ToListAsync())
-                       .Should().Throw<SqlException>().Where(ex => ex.Message.StartsWith("Invalid object name '#TestEntities", StringComparison.Ordinal));
+                       .Should().Throw<SqliteException>().Where(ex => ex.Message.StartsWith("SQLite Error 1: 'no such table: TestEntities_1'.", StringComparison.Ordinal));
       }
 
       [Fact]

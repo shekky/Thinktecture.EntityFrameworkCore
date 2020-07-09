@@ -8,5 +8,11 @@ namespace Thinktecture.TestDatabaseContext
       public Guid Id { get; set; }
 
       public OwnedSeparateEntity SeparateEntity { get; set; }
+
+#nullable disable
+      public TestEntityOwningOneSeparateEntity()
+      {
+      }
+#nullable enable
    }
 }

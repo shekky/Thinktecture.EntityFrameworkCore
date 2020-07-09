@@ -56,26 +56,26 @@ namespace Thinktecture.EntityFrameworkCore.Data
          _enumerator = entities.GetEnumerator();
       }
 
-      private (Dictionary<int, Func<T, object?>> lookup, List<IProperty> properties) BuildPropertyGetterLookup(IHierarchicalPropertyIterator propertyIterator)
+      private (Dictionary<int, Func<T, object?>> lookup, List<IProperty> properties) BuildPropertyGetterLookup(
+         IHierarchicalPropertyIterator propertyIterator)
       {
          var lookup = new Dictionary<int, Func<T, object?>>();
          var properties = new List<IProperty>();
 
-         BuildPropertiesGetterLookup(propertyIterator, null, null, lookup, properties);
+         BuildPropertiesGetterLookup(propertyIterator, null, lookup, properties);
 
          return (lookup, properties);
       }
 
       private void BuildPropertiesGetterLookup(
          IHierarchicalPropertyIterator propertyIterator,
-         INavigation? ownedTypeNavigation,
          Func<object, object?>? ownedTypeGetter,
          Dictionary<int, Func<T, object?>> lookup,
          List<IProperty> properties)
       {
          foreach (var property in propertyIterator.GetProperties())
          {
-            var getter = BuildPropertyGetter(property, ownedTypeNavigation, ownedTypeGetter);
+            var getter = BuildPropertyGetter(property, ownedTypeGetter);
             lookup.Add(lookup.Count, getter);
             properties.Add(property);
          }
@@ -87,13 +87,12 @@ namespace Thinktecture.EntityFrameworkCore.Data
                                   ? getter
                                   : Combine(ownedTypeGetter, getter);
 
-            BuildPropertiesGetterLookup(ownedTypeIterator, ownedTypeIterator.Navigation, nestedGetter, lookup, properties);
+            BuildPropertiesGetterLookup(ownedTypeIterator, nestedGetter, lookup, properties);
          }
       }
 
       private Func<T, object?> BuildPropertyGetter(
          IProperty property,
-         INavigation? ownedTypeNavigation,
          Func<object, object?>? ownedTypeGetter)
       {
          var hasSqlDefaultValue = property.GetDefaultValueSql() != null;
